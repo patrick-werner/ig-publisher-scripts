@@ -1,0 +1,16 @@
+name: Windows batch validation
+
+on:
+  push:
+    branches:
+      - test/windows-batch-validation
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Exercise batch launchers and update targets
+        shell: pwsh
+        run: ./tests/windows-batch-tests.ps1
