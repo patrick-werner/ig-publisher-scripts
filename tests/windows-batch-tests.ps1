@@ -112,7 +112,7 @@ function Test-RuntimeLookup {
     }
 
     $output = Invoke-Batch $fixture.Project "$Script probe"
-    Assert-Contains $output "MOCK_JAVA -jar `"$expectedJar`" -ig ." "$Script lookup case $($Case.Name)"
+    Assert-Contains $output "MOCK_JAVA_ARGS=-jar|$expectedJar|-ig|." "$Script lookup case $($Case.Name)"
     $script:testCount++
 }
 
@@ -148,16 +148,40 @@ function Test-UpdateTarget {
 
 try {
     New-Item -ItemType Directory -Path $mockBin -Force | Out-Null
-    Set-Content -Path (Join-Path $mockBin "java.cmd") -Encoding ASCII -Value @"
-@ECHO OFF
-ECHO MOCK_JAVA %*
-EXIT /B 0
-"@
-    Set-Content -Path (Join-Path $mockBin "powershell.cmd") -Encoding ASCII -Value @"
-@ECHO OFF
-IF DEFINED MOCK_POWERSHELL_LOG ECHO %*>>"%MOCK_POWERSHELL_LOG%"
-EXIT /B 0
-"@
+    $mockSource = @'
+using System;
+using System.Diagnostics;
+using System.IO;
+
+public static class MockCommand
+{
+    public static int Main(string[] args)
+    {
+        var executable = Path.GetFileNameWithoutExtension(
+            Process.GetCurrentProcess().MainModule.FileName
+        );
+
+        if (string.Equals(executable, "java", StringComparison.OrdinalIgnoreCase))
+        {
+            Console.WriteLine("MOCK_JAVA_ARGS=" + string.Join("|", args));
+        }
+        else
+        {
+            var logPath = Environment.GetEnvironmentVariable("MOCK_POWERSHELL_LOG");
+            if (!string.IsNullOrEmpty(logPath))
+            {
+                File.AppendAllText(logPath, string.Join("|", args) + Environment.NewLine);
+            }
+        }
+
+        return 0;
+    }
+}
+'@
+    $compiledMock = Join-Path $mockBin "mock-command.exe"
+    Add-Type -TypeDefinition $mockSource -Language CSharp -OutputAssembly $compiledMock -OutputType ConsoleApplication
+    Copy-Item $compiledMock (Join-Path $mockBin "java.exe")
+    Copy-Item $compiledMock (Join-Path $mockBin "powershell.exe")
     $env:Path = "$mockBin;$originalPath"
 
     $lookupCases = @(
@@ -187,7 +211,7 @@ EXIT /B 0
     Add-EmptyFile $defaultJar
     foreach ($script in @("_build.bat", "_genonce.bat")) {
         $defaultOutput = Invoke-Batch $defaultFixture.Project "$script probe"
-        Assert-Contains $defaultOutput "MOCK_JAVA -jar `"$defaultJar`" -ig ." "$script default USERPROFILE publisher home"
+        Assert-Contains $defaultOutput "MOCK_JAVA_ARGS=-jar|$defaultJar|-ig|." "$script default USERPROFILE publisher home"
         $testCount++
     }
 
