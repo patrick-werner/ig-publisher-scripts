@@ -178,8 +178,14 @@ public static class MockCommand
     }
 }
 '@
+    $mockSourcePath = Join-Path $mockBin "MockCommand.cs"
     $compiledMock = Join-Path $mockBin "mock-command.exe"
-    Add-Type -TypeDefinition $mockSource -Language CSharp -OutputAssembly $compiledMock -OutputType ConsoleApplication
+    Set-Content -Path $mockSourcePath -Value $mockSource -Encoding UTF8
+    $csharpCompiler = Join-Path $env:WINDIR "Microsoft.NET\Framework64\v4.0.30319\csc.exe"
+    & $csharpCompiler /nologo /target:exe "/out:$compiledMock" $mockSourcePath
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to compile native command mock"
+    }
     Copy-Item $compiledMock (Join-Path $mockBin "java.exe")
     Copy-Item $compiledMock (Join-Path $mockBin "powershell.exe")
     $env:Path = "$mockBin;$originalPath"
